@@ -1,17 +1,20 @@
-function [f,u,v] = IntensityMotionRecovery(x,y,pol,time,triggers)
+function [f,u,v,e] = IntensityMotionRecovery(x,y,pol,time,triggers)
 
 %% initialization
 %%% First, specify the 3D cube: 128 X 128 X length(time)
 option.nx = 128;
 option.ny = 128;
-pol = double(pol)*255;
-T = 3*10^4; % 30 ms. If we can finish computing in 30ms, we achieve real-time, in terms of 30fps
-delta_t = 0.5*10^4; % temporal cell in a sliding window
+pol = double(pol);
+pol(pol==0) = -1;
+T = 2*10^3; % 30 ms. If we can finish computing in 30ms, we achieve real-time, in terms of 30fps
+T0 = 3*10^4;
+delta_t = 0.25*10^3; % temporal cell in a sliding window
 time = time-time(1); % offseting the time axis
+n_events = 1:length(time);
 option.nt = round(T/delta_t); % grids in temporal domain
 
 %%% Second, specify the initial value
-f = 128*ones(option.ny,option.nx,option.nt);
+f = zeros(option.ny,option.nx,option.nt);
 u = zeros(option.ny,option.nx,option.nt);
 v = zeros(option.ny,option.nx,option.nt);
 e = f;
@@ -19,7 +22,7 @@ e = f;
 
 %%% Third, we extract the events within the spatio-temporal cube
 for ii = 1:option.nt
-    idx = find(time>=(delta_t*(ii-1)+1) & time<=(delta_t*ii));
+    idx = find(n_events>=T0 + (delta_t*(ii-1)+1) & n_events<=T0 + (delta_t*ii));
     for kk = 1:length(idx)
         e(128-y(idx(kk)),128-x(idx(kk)),ii) = pol(idx(kk));
     end
@@ -27,24 +30,27 @@ end;
 
 %%% Fourth, specify hyper-parameters: regularization weights and
 %%% Charbonnier parameters. Specify numerical methods: Jacobian method
-option.alpha_1 = 1;
-option.alpha_2 = 15;
-option.alpha_3 = 15;
-option.lambda_d = 0.75;
-option.lambda_b = 0.1;
-option.lambda_f = 0.08;
-option.lambda_o = 0.1;
+option.alpha_1 = 0.2; % weights - brightness constraint
+option.alpha_2 = 5; % weights - intensity regularization
+option.alpha_3 = 1; % weights - flow regularization
+option.lambda_d = 0.5; % Charbonnier - data term
+option.lambda_b = 2.5; % Charbonnier - brightness term
+option.lambda_f = 0.005; % Charbonnier - intensity smoothness term
+option.lambda_o = 0.005; % Charbonnier - flow smoothness term
 option.solver = 'jacobian';
 
-option.max_iter_inner = 10;
-option.max_iter_outer = 3000;
+option.max_iter_inner = 1;
+option.max_iter_outer = 300;
 
 
 %% main-loop
 for tt = 1:option.max_iter_outer
+    fprintf('-iteration = %i\n',tt);
     % intensity recovery
+    fprintf('--recovering intensity\n');
     f = IntensityEstimate(e,f,u,v,option);
     % motion recovery
+    fprintf('--recovering motion\n');
     [u,v] = MotionEstimate(f,u,v,option);
 end
 
@@ -131,6 +137,9 @@ switch option.solver
               - psi_prime_d.*em)./Wc;
               
             f  = fm(2:end-1,2:end-1,2:end-1);
+
+            %%%% hard constraint: f \in [0,1]
+            f = (f-min(f(:)))./(max(f(:))-min(f(:)));
         end
        
     otherwise
@@ -218,33 +227,4 @@ um(:,end,:) = um(:,end-1,:);
 um(1,:,:) = um(2,:,:);
 um(end,:,:) = um(end-1,:,:);
 end
-
-
-
-
-
-
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-    
-
-
-
-
-
-
-
-
-
-    
-
-
 
