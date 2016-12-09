@@ -40,7 +40,7 @@ option.lambda_o = 0.005; % Charbonnier - flow smoothness term
 option.solver = 'jacobian';
 
 option.max_iter_inner = 1;
-option.max_iter_outer = 300;
+option.max_iter_outer = 2500;
 
 
 %% main-loop
@@ -74,7 +74,6 @@ ht = 1;
 
 % specify the impainting weights
 rho = MirrorImageBoundary(exp(-100*e.^2));
-
 
 
 switch option.solver
