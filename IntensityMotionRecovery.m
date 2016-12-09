@@ -59,9 +59,6 @@ end
 
 
 
-
-
-
 function f = IntensityEstimate(e,f,u,v,option)
 nx = option.nx;
 ny = option.ny;
@@ -74,6 +71,10 @@ lambda_b = option.lambda_b;
 lambda_f = option.lambda_f;
 hs = 1;
 ht = 1;
+
+% specify the impainting weights
+rho = MirrorImageBoundary(exp(-100*e.^2));
+
 
 
 switch option.solver
@@ -110,8 +111,8 @@ switch option.solver
             Wncc = 0.5*(circshift(A,1,2)+circshift(G,1,2)) + 0.5*(A+G);
             Wcpc = 0.5*(circshift(B,-1,1)+circshift(G,-1,1)) + 0.5*(B+G);
             Wcnc = 0.5*(circshift(B,1,1)+circshift(G,1,1)) + 0.5*(B+G);
-            Wccp = 0.5*(circshift(F,-1,3)+circshift(G,-1,3)) + 0.5*(F+G) + psi_prime_d./2;
-            Wccn = 0.5*(circshift(F,1,3)+circshift(G,1,3)) + 0.5*(F+G) - psi_prime_d./2;
+            Wccp = 0.5*(circshift(F,-1,3)+circshift(G,-1,3)) + 0.5*(F+G) + (1-rho).*psi_prime_d./2;
+            Wccn = 0.5*(circshift(F,1,3)+circshift(G,1,3)) + 0.5*(F+G) - (1-rho).*psi_prime_d./2;
 
             Wcpp = circshift(E,-1,1)/4 + circshift(E,-1,3)/4;
             Wcnp = -circshift(E,-1,3)/4 - circshift(E,1,1)/4;
@@ -134,7 +135,7 @@ switch option.solver
               + Wcnn.*circshift(fm,[1,0,1]) + Wppc.*circshift(fm,[-1,-1,0]) + Wnpc.*circshift(fm,[-1,1,0])...
               + Wpnc.*circshift(fm,[1,-1,0]) + Wnnc.*circshift(fm,[1,1,0]) + Wpcp.*circshift(fm,[0,-1,-1])...
               + Wpcn.*circshift(fm,[0,-1,1]) + Wncp.*circshift(fm,[0,1,-1]) + Wncn.*circshift(fm,[0,1,1])...
-              - psi_prime_d.*em)./Wc;
+              - (1-rho).*psi_prime_d.*em)./Wc;
               
             f  = fm(2:end-1,2:end-1,2:end-1);
 
