@@ -6,9 +6,9 @@ option.nx = 128;
 option.ny = 128;
 pol = double(pol);
 pol(pol==0) = -1;
-T = 2*10^3; % 30 ms. If we can finish computing in 30ms, we achieve real-time, in terms of 30fps
+T = 5*10^3; % 30 ms. If we can finish computing in 30ms, we achieve real-time, in terms of 30fps
 T0 = 3*10^4;
-delta_t = 0.25*10^3; % temporal cell in a sliding window
+delta_t = 1*10^3; % temporal cell in a sliding window
 time = time-time(1); % offseting the time axis
 n_events = 1:length(time);
 option.nt = round(T/delta_t); % grids in temporal domain
@@ -30,8 +30,8 @@ end;
 
 %%% Fourth, specify hyper-parameters: regularization weights and
 %%% Charbonnier parameters. Specify numerical methods: Jacobian method
-option.alpha_1 = 0.2; % weights - brightness constraint
-option.alpha_2 = 5; % weights - intensity regularization
+option.alpha_1 = 1; % weights - brightness constraint
+option.alpha_2 = 10; % weights - intensity regularization
 option.alpha_3 = 1; % weights - flow regularization
 option.lambda_d = 0.5; % Charbonnier - data term
 option.lambda_b = 2.5; % Charbonnier - brightness term
