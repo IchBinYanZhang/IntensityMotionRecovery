@@ -5,17 +5,16 @@ function [f,u,v,e] = IntensityMotionRecovery(x,y,pol,time,triggers)
 option.nx = 128;
 option.ny = 128;
 pol = double(pol);
-pol(pol==0) = -255;
-pol(pol==1) = 255;
+pol(pol==0) = -1;
 T = 8*10^3; % 30 ms. If we can finish computing in 30ms, we achieve real-time, in terms of 30fps
 T0 = 3*10^4;
-delta_t = 1*10^3; % temporal cell in a sliding window
+delta_t = 0.8*10^3; % temporal cell in a sliding window
 time = time-time(1); % offseting the time axis
 n_events = 1:length(time);
 option.nt = round(T/delta_t); % grids in temporal domain
 
 %%% Second, specify the initial value
-f = 128*ones(option.ny,option.nx,option.nt);
+f = zeros(option.ny,option.nx,option.nt);
 u = zeros(option.ny,option.nx,option.nt);
 v = zeros(option.ny,option.nx,option.nt);
 e = u;
@@ -28,33 +27,37 @@ for ii = 1:option.nt
         e(128-y(idx(kk)),128-x(idx(kk)),ii) = pol(idx(kk));
     end
 end;
-
+f = e;
 %%% Fourth, specify hyper-parameters: regularization weights and
 %%% Charbonnier parameters. Specify numerical methods: Jacobian method
-option.alpha_1 = 50; % weights - brightness constraint
-option.alpha_2 = 50; % weights - intensity regularization
-option.alpha_3 = 10; % weights - flow regularization
+option.alpha_1 = 0.1; % weights - brightness constraint
+option.alpha_2 = 0.5; % weights - event term
+option.alpha_3 = 0.5; % weights - flow regularization
 option.alpha_4 = 0.01;
-option.lambda_d = 0.001; % Charbonnier - data term
-option.lambda_b = 0.01; % Charbonnier - brightness term
-option.lambda_f = 0.001; % Charbonnier - intensity smoothness term
-option.lambda_o = 0.01; % Charbonnier - flow smoothness term
+option.lambda_d = 0.008; % Charbonnier - event term
+option.lambda_b = 0.1; % Charbonnier - brightness term
+option.lambda_f = 0.0005; % Charbonnier - intensity smoothness term
+option.lambda_o = 0.0005; % Charbonnier - flow smoothness term
 option.solver = 'jacobian';
 
 option.max_iter_inner = 1;
-option.max_iter_outer = 400;
+option.max_iter_outer = 2000;
 
 
 
 %% main-loop
 for tt = 1:option.max_iter_outer
-    fprintf('-iteration = %i\r',tt);
+    fprintf('-iteration = %i    ',tt);
     % intensity recovery
     %fprintf('--recovering intensity\n');
     f = IntensityEstimate(e,f,u,v,option);
     % motion recovery
     %fprintf('--recovering motion\n');
-    %[u,v] = MotionEstimate(f,u,v,option);
+    [u,v] = MotionEstimate(f,u,v,option);
+    fprintf('min(f) = %f    max(f) = %f    ',min(f(:)),max(f(:)));
+    fprintf('min(u) = %f    max(u) = %f    ',min(u(:)),max(u(:)));
+    fprintf('min(v) = %f    max(v) = %f\r',min(v(:)),max(v(:)));
+
 end
 fprintf('\n');
 
@@ -113,7 +116,7 @@ lambda_b = option.lambda_b;
 lambda_f = option.lambda_f;
 hs = 1;
 ht = 1;
-
+eps = 1e-6;
 % specify the impainting weights
 
 
@@ -121,6 +124,7 @@ switch option.solver
     case 'jacobian'
         em = MirrorImageBoundary(e);
         rho = exp(-5*em.^2);
+        %rho = 0;
         for t = 1:option.max_iter_inner
             %%% mirror image boundary
             fm = MirrorImageBoundary(f);
@@ -129,10 +133,10 @@ switch option.solver
 
             %%% update nonlinearity
             [fx,fy,ft] = gradient(fm);
-            psi_prime_d = 1./sqrt(1+(ft-em).^2 ./ lambda_d^2);
-            psi_prime_b = 1./sqrt(1+(fx.*um+fy.*vm+ft).^2 ./ lambda_b^2);
-            psi_prime_f = 1./sqrt(1+(fx.^2+fy.^2+ft.^2) ./ lambda_f^2);
-
+            psi_prime_d = 1./sqrt(1+(ft-em).^2 / lambda_d^2);
+            psi_prime_b = 1./sqrt(1+(fx.*um+fy.*vm+ft).^2 / lambda_b^2);
+            psi_prime_f = 1./sqrt(1+(fx.^2+fy.^2+ft.^2) / lambda_f^2);
+            [~,~,data_term] = gradient(alpha_2*psi_prime_d.*em);
             %%% solving linear equation
             % First, compute used terms
             A = alpha_1.*psi_prime_b.*um.*um;
@@ -141,19 +145,21 @@ switch option.solver
             D = alpha_1.*psi_prime_b.*um;
             E = alpha_1.*psi_prime_b.*vm;
             F = alpha_1.*psi_prime_b;
-            G = alpha_2.*psi_prime_f;
+            G = psi_prime_f;
+            H = alpha_2*(1-rho).*psi_prime_d;
 
 
-            Wc =alpha_4+ (A+G) + 0.5*(circshift(A,1,2)+circshift(G,1,2)) + 0.5*(circshift(A,-1,2)+circshift(G,-1,2))...
-               + (B+G) + 0.5*(circshift(B,1,1)+circshift(G,1,1)) + 0.5*(circshift(B,-1,1)+circshift(G,-1,1))... 
-               + (F+G) + 0.5*(circshift(F,1,3)+circshift(G,1,3)) + 0.5*(circshift(F,-1,3)+circshift(G,-1,3));
+%            Wc =alpha_4+ (A+G) + 0.5*(circshift(A,1,2)+circshift(G,1,2)) + 0.5*(circshift(A,-1,2)+circshift(G,-1,2))...
+%               + (B+G) + 0.5*(circshift(B,1,1)+circshift(G,1,1)) + 0.5*(circshift(B,-1,1)+circshift(G,-1,1))... 
+%               + (F+H) + 0.5*(circshift(F,1,3)+circshift(H,1,3)) + 0.5*(circshift(F,-1,3)+circshift(H,-1,3));
 
             Wpcc = 0.5*(circshift(A,-1,2)+circshift(G,-1,2)) + 0.5*(A+G);
             Wncc = 0.5*(circshift(A,1,2)+circshift(G,1,2)) + 0.5*(A+G);
             Wcpc = 0.5*(circshift(B,-1,1)+circshift(G,-1,1)) + 0.5*(B+G);
             Wcnc = 0.5*(circshift(B,1,1)+circshift(G,1,1)) + 0.5*(B+G);
-            Wccp = 0.5*(circshift(F,-1,3)+circshift(G,-1,3)) + 0.5*(F+G) + psi_prime_d./2;
-            Wccn = 0.5*(circshift(F,1,3)+circshift(G,1,3)) + 0.5*(F+G) - psi_prime_d./2;
+            Wccp = 0.5*(circshift(F,-1,3)+circshift(H,-1,3)) + 0.5*(F+H);
+            Wccn = 0.5*(circshift(F,1,3)+circshift(H,1,3)) + 0.5*(F+H);
+            Wc = eps + Wpcc+Wncc+Wcpc+Wcnc+Wccp+Wccn;
 
             Wcpp = circshift(E,-1,1)/4 + circshift(E,-1,3)/4;
             Wcnp = -circshift(E,-1,3)/4 - circshift(E,1,1)/4;
@@ -170,19 +176,18 @@ switch option.solver
             Wncp = -circshift(D,1,2)/4 - circshift(D,-1,3)/4;
             Wncn = circshift(D,-1,2)/4 + circshift(D,-1,3)/4;
 
-            fm =(128*alpha_4+Wpcc.*circshift(fm,-1,2) + Wncc.*circshift(fm,1,2) + Wcpc.*circshift(fm,-1,1)...
+            fm =(Wpcc.*circshift(fm,-1,2) + Wncc.*circshift(fm,1,2) + Wcpc.*circshift(fm,-1,1)...
               + Wcnc.*circshift(fm,1,1) + Wccp.*circshift(fm,-1,3) + Wccn.*circshift(fm,1,3)...
               + Wcpp.*circshift(fm,[-1,0,-1]) + Wcnp.*circshift(fm,[1,0,-1]) + Wcpn.*circshift(fm,[-1,0,1])...
               + Wcnn.*circshift(fm,[1,0,1]) + Wppc.*circshift(fm,[-1,-1,0]) + Wnpc.*circshift(fm,[-1,1,0])...
               + Wpnc.*circshift(fm,[1,-1,0]) + Wnnc.*circshift(fm,[1,1,0]) + Wpcp.*circshift(fm,[0,-1,-1])...
               + Wpcn.*circshift(fm,[0,-1,1]) + Wncp.*circshift(fm,[0,1,-1]) + Wncn.*circshift(fm,[0,1,1])...
-              - psi_prime_d.*em)./Wc;
+              - (1-rho).*data_term)./Wc;
               
             f  = fm(2:end-1,2:end-1,2:end-1);
 
             %%%% hard constraint: f \in [0,1]
             %f(f<0)=0;f(f>1)=1;
-            fprintf('min(f) = %f\t max(f) = %f\t',min(f(:)),max(f(:)));
         end
        
     otherwise
