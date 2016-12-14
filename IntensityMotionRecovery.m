@@ -41,7 +41,7 @@ option.lambda_o = 0.0005; % Charbonnier - flow smoothness term
 option.solver = 'jacobian';
 
 option.max_iter_inner = 1;
-option.max_iter_outer = 2000;
+option.max_iter_outer = 500;
 
 
 
